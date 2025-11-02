@@ -12,6 +12,8 @@ You can use the built-in server-rendered web UI or call REST endpoints directly.
 - REST API: start/stop/status/files/logs/search
 - Serves downloaded files from `/downloaded/*`
 
+![App UI](https://i.imgur.com/83bEAGb.png)
+
 ---
 
 #### Requirements
