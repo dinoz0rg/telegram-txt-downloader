@@ -14,6 +14,12 @@ You can use the built-in server-rendered web UI or call REST endpoints directly.
 
 ![App UI](https://i.imgur.com/Be8BjvX.png)
 
+### Legal disclaimer
+- This project is provided for educational and lawful use only.
+- Do not use it to download, store, search, process, or distribute content that you do not have the legal right to access.
+- You are solely responsible for complying with all applicable laws and regulations, as well as the terms of service of the platforms you use.
+- The authors and contributors are not responsible or liable for any misuse or damages resulting from the use of this software.
+
 ---
 
 #### Requirements
