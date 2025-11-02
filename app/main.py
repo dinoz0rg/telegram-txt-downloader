@@ -1,4 +1,5 @@
 from pathlib import Path
+from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -7,13 +8,33 @@ from .api import router, downloader_service
 from .web import router as web_router
 from .config import settings
 from .logging_setup import setup_logging
-from .db import init_db, import_legacy_downloaded_list, close_db
+from .db import init_db, close_db
 
 
 def create_app() -> FastAPI:
     setup_logging()
 
-    app = FastAPI(title="Telegram TXT Downloader & Search API", version="1.0.0")
+    @asynccontextmanager
+    async def _lifespan(app: FastAPI):
+        try:
+            init_db(Path(settings.db_file))
+        except Exception:
+            pass
+
+        try:
+            yield
+        finally:
+            try:
+                await downloader_service.stop()
+                await downloader_service.wait_until_stopped(timeout=10.0)
+            except Exception:
+                pass
+            try:
+                close_db()
+            except Exception:
+                pass
+
+    app = FastAPI(title="Telegram TXT Downloader & Search API", version="1.0.0", lifespan=_lifespan)
 
     app.add_middleware(
         CORSMiddleware,
@@ -38,44 +59,11 @@ def create_app() -> FastAPI:
     results_dir.mkdir(parents=True, exist_ok=True)
     app.mount("/results", StaticFiles(directory=str(results_dir)), name="results")
 
-    # Initialize database and import legacy downloaded list if present
-    try:
-        init_db(Path(settings.db_file))
-        project_root = Path(__file__).resolve().parent.parent
-        # Legacy locations
-        legacy1 = project_root / "downloaded_files.txt"
-        legacy2 = project_root / "output" / "downloaded_files.txt"
-        imported = 0
-        if legacy1.exists():
-            imported += import_legacy_downloaded_list(legacy1)
-        if legacy2.exists():
-            imported += import_legacy_downloaded_list(legacy2)
-        if imported:
-            # Optionally keep the files as backups; no further use in app
-            pass
-    except Exception:
-        # Non-fatal; app can still run without DB init but features may be limited
-        pass
-
     # Include REST API routes
     app.include_router(router)
 
     # Server-rendered Jinja UI (modern minimal web UI)
     app.include_router(web_router)
-
-    @app.on_event("shutdown")
-    async def _shutdown():
-        # Ensure background downloader stops on app shutdown
-        try:
-            await downloader_service.stop()
-            await downloader_service.wait_until_stopped(timeout=10.0)
-        except Exception:
-            # Best-effort shutdown; uvicorn will proceed
-            pass
-        try:
-            close_db()
-        except Exception:
-            pass
 
     @app.get("/")
     async def index():

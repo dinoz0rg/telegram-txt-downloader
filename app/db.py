@@ -281,35 +281,3 @@ def record_search_result(path: Path) -> str:
     mark_file_downloaded(file_id=file_id, path=p, size=size, origin='search')
     return file_id
 
-
-# Migration helper from legacy text file
-
-def import_legacy_downloaded_list(txt_path: Path) -> int:
-    """Import entries from the legacy downloaded_files.txt into DB. Returns number of imported rows."""
-    if not txt_path.exists():
-        return 0
-    try:
-        content = txt_path.read_text(encoding="utf-8")
-    except Exception:
-        return 0
-    rows = [line.strip() for line in content.splitlines() if line.strip()]
-    if not rows:
-        return 0
-    conn = get_conn()
-    inserted = 0
-    now_txt = _now_str_gmt8()
-    for fid in rows:
-        try:
-            conn.execute(
-                """
-                INSERT OR IGNORE INTO files (file_id, status, downloaded_at)
-                VALUES (?, 'downloaded', ?)
-                """,
-                (fid, now_txt),
-            )
-            inserted += 1
-        except Exception:
-            # ignore per-row failures
-            pass
-    conn.commit()
-    return inserted
