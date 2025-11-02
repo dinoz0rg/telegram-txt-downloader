@@ -1,0 +1,48 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environments
+.venv/
+venv/
+.env
+.env.*
+
+# Logs
+logs/
+*.log
+
+# SQLite DB
+db/*.db
+db/*.sqlite
+db/*.sqlite3
+
+# Output artifacts
+output/downloaded_dir/
+output/searched_dir/
+results/
+
+# Pyrogram session files
+session*
+*.session
+*.session-journal
+
+# IDE / Editors
+.idea/
+.vscode/
+*.iml
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Packaging / build
+build/
+dist/
+*.egg-info/
+
+# Tests / coverage
+.pytest_cache/
+.coverage
+coverage.xml

@@ -1,0 +1,20 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="card shadow-sm">
+  <div class="card-header d-flex align-items-center justify-content-between">
+    <h5 class="mb-0"><i class="bi bi-terminal me-2"></i>Logs</h5>
+    <div class="d-flex align-items-center gap-2">
+      <input id="logs-tail" type="number" class="form-control form-control-sm" style="width:120px" placeholder="Tail bytes" value="2000" />
+      <button id="logs-refresh" class="btn btn-sm btn-outline-secondary"><i class="bi bi-arrow-clockwise"></i> Refresh</button>
+    </div>
+  </div>
+  <div class="card-body">
+    <pre id="logs" class="font-monospace" style="max-height:60vh; overflow:auto; white-space:pre-wrap;"></pre>
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+  window.UI.initLogs();
+</script>
+{% endblock %}

@@ -1,0 +1,49 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="card shadow-sm">
+  <div class="card-header">
+    <h5 class="mb-0"><i class="bi bi-gear me-2"></i>Settings</h5>
+  </div>
+  <div class="card-body">
+    <div class="row g-3">
+      <div class="col-12 col-lg-6">
+        <div class="mb-3">
+          <label class="form-label text-body-secondary">Group ID</label>
+          <code class="d-block">{{ settings.group_id }}</code>
+        </div>
+        <div class="mb-3">
+          <label class="form-label text-body-secondary">Session Name</label>
+          <code class="d-block">{{ settings.session_name }}</code>
+        </div>
+        <div class="mb-3">
+          <label class="form-label text-body-secondary">Max File Size</label>
+          <code class="d-block">{{ settings.max_file_size }}</code>
+        </div>
+        <div class="mb-3">
+          <label class="form-label text-body-secondary">Max File Age (days)</label>
+          <code class="d-block">{{ settings.max_file_age_days }}</code>
+        </div>
+      </div>
+      <div class="col-12 col-lg-6">
+        <div class="mb-3">
+          <label class="form-label text-body-secondary">Download Directory</label>
+          <code class="d-block">{{ settings.download_dir }}</code>
+        </div>
+        <div class="mb-3">
+          <label class="form-label text-body-secondary">Database File</label>
+          <code class="d-block">{{ settings.db_file }}</code>
+        </div>
+        <div class="mb-3">
+          <label class="form-label text-body-secondary">Logs Directory</label>
+          <code class="d-block">{{ settings.logs_dir }}</code>
+        </div>
+        <div class="mb-3">
+          <label class="form-label text-body-secondary">Log File</label>
+          <code class="d-block">{{ settings.log_file }}</code>
+        </div>
+      </div>
+    </div>
+    <p class="text-body-secondary small mt-2">These values come from your .env and are resolved to absolute paths.</p>
+  </div>
+</div>
+{% endblock %}

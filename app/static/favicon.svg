@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <defs>
+    <linearGradient id="g" x1="0" x2="1" y1="0" y2="1">
+      <stop offset="0" stop-color="#5b6bff"/>
+      <stop offset="1" stop-color="#7bd1ff"/>
+    </linearGradient>
+  </defs>
+  <rect width="64" height="64" rx="14" fill="url(#g)"/>
+  <g fill="#fff">
+    <!-- Minimal TG monogram: T + G constructed with simple shapes -->
+    <rect x="16" y="18" width="32" height="4" rx="2"/>
+    <rect x="30" y="18" width="4" height="28" rx="2"/>
+    <path d="M20 36a12 12 0 1 1 0 0.1h4a8 8 0 1 0 0-.1v6h10v-4H28v-6h-8z"/>
+  </g>
+</svg>
