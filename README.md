@@ -92,3 +92,22 @@ Use a proper process manager and a reverse proxy. Example:
 uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 2
 ```
 
+### cURL examples (Jobs)
+
+- Start a search and get `job_id`:
+```
+curl -X POST "http://127.0.0.1:8000/api/jobs/search?keyword=test"
+```
+- List jobs:
+```
+curl "http://127.0.0.1:8000/api/jobs"
+```
+- Job status:
+```
+curl "http://127.0.0.1:8000/api/jobs/<job_id>"
+```
+- Cancel a job:
+```
+curl -X DELETE "http://127.0.0.1:8000/api/jobs/<job_id>"
+```
+

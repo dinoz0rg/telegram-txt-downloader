@@ -4,7 +4,8 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
-from .api import router, downloader_service
+from .api import router
+from .services import downloader_service
 from .web import router as web_router
 from .config import settings
 from .logging_setup import setup_logging

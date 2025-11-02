@@ -4,13 +4,11 @@ from pathlib import Path
 from typing import Optional
 import time
 import os
-from starlette.concurrency import run_in_threadpool
 
-from .telegram_downloader import TelegramDownloaderService
-from .searcher import run_search, SearchResult
+from .services import downloader_service, search_service
 from .config import settings
-from .db import record_search_result
-from .db import get_daily_downloads, get_origin_breakdown, get_stats_summary
+from .repository import repository
+from .jobs import job_manager
 
 router = APIRouter()
 
@@ -32,14 +30,7 @@ try:
     else:
         LOCK_PATH.write_text(str(INSTANCE_PID), encoding="utf-8")
 except Exception:
-    # Non-fatal; if we can't write the lock, we just won't detect multi-instance
     pass
-
-downloader_service = TelegramDownloaderService()
-
-# Simple explicit state for Searcher
-SEARCH_STATE = "stopped"  # stopped | starting | running | stopping
-SEARCH_LAST_CHANGE = time.time()
 
 
 @router.get("/health")
@@ -50,9 +41,9 @@ async def health():
 @router.get("/api/stats")
 async def stats(days: int = 30):
     try:
-        daily = get_daily_downloads(days)
-        origin = get_origin_breakdown()
-        summary = get_stats_summary()
+        daily = repository.get_daily_downloads(days)
+        origin = repository.get_origin_breakdown()
+        summary = repository.get_stats_summary()
         return {
             "daily": daily,
             "origin": origin,
@@ -60,7 +51,6 @@ async def stats(days: int = 30):
             "days": days,
         }
     except Exception as e:
-        # Avoid failing the UI if stats query fails
         return {
             "daily": [],
             "origin": [],
@@ -83,7 +73,6 @@ async def stop_downloader(force: bool = False, timeout: float = 10.0):
         stopped_gracefully = await downloader_service.wait_until_stopped(timeout=0.0 if force else timeout)
         return {"status": "stopped" if stopped_gracefully else "cancelled"}
     except Exception:
-        # Never propagate cancellation errors to the client
         return {"status": "cancelled"}
 
 
@@ -113,6 +102,14 @@ async def downloader_status():
     st["state"] = state
     st["last_state_change"] = last_change
     st["running"] = bool(running_flag)
+
+    # Attach current JobManager job if present
+    jm_id = getattr(downloader_service, "current_job_manager_id", None)
+    st["job_id"] = jm_id
+    if jm_id:
+        job = job_manager.get(jm_id)
+        if job:
+            st["job"] = _serialize_job(job)
 
     # Diagnostics to help verify why running is true/false and detect multi-instance
     st["_diag"] = {
@@ -259,31 +256,13 @@ async def get_logs(tail: int = 2000):
 
 @router.get("/api/search/status")
 async def search_status():
-    global SEARCH_STATE, SEARCH_LAST_CHANGE
-    return {
-        "state": SEARCH_STATE,
-        "running": SEARCH_STATE in ("starting", "running"),
-        "last_state_change": SEARCH_LAST_CHANGE,
-    }
+    return search_service.status()
 
 
 @router.post("/api/search")
 async def search(keyword: str, max_workers: Optional[int] = None):
-    global SEARCH_STATE, SEARCH_LAST_CHANGE
     try:
-        SEARCH_STATE = "starting"
-        SEARCH_LAST_CHANGE = time.time()
-        # Immediately mark running for UI responsiveness
-        SEARCH_STATE = "running"
-        SEARCH_LAST_CHANGE = time.time()
-        # Run the synchronous searcher off the event loop so other endpoints (like downloader/status) remain responsive
-        result: SearchResult = await run_in_threadpool(
-            run_search,
-            keyword,
-            settings.download_dir,
-            None,
-            max_workers,
-        )
+        result, job_id = await search_service.run(keyword=keyword, max_workers=max_workers)
         # If the result is inside the results_dir, provide a public URL under /results
         output_path = Path(result.output_path)
         output_url = None
@@ -306,11 +285,12 @@ async def search(keyword: str, max_workers: Optional[int] = None):
                     output_url = f"/results/{candidate.name}"
         # Record the search result file in DB (origin='search')
         try:
-            record_search_result(Path(result.output_path))
+            repository.record_search_result(Path(result.output_path))
         except Exception:
             # non-fatal if DB write fails
             pass
         return {
+            "job_id": job_id,
             "scanned_files": result.scanned_files,
             "lines_found": result.lines_found,
             "output_path": result.output_path,
@@ -318,6 +298,83 @@ async def search(keyword: str, max_workers: Optional[int] = None):
         }
     except RuntimeError as e:
         raise HTTPException(status_code=400, detail=str(e))
-    finally:
-        SEARCH_STATE = "stopped"
-        SEARCH_LAST_CHANGE = time.time()
+
+
+# --- Jobs API (additive, non-breaking) ---
+from typing import Any, Dict
+
+
+def _serialize_job(job) -> Dict[str, Any]:
+    return {
+        "id": job.id,
+        "type": job.type,
+        "status": job.status.value if hasattr(job.status, "value") else str(job.status),
+        "progress": job.progress,
+        "started_at": job.started_at,
+        "finished_at": job.finished_at,
+        "error": job.error,
+    }
+
+
+@router.get("/api/jobs")
+async def list_jobs(limit: int = 50):
+    limit = 1 if limit <= 0 else min(500, limit)
+    jobs = job_manager.list(limit=limit)
+    return {"jobs": [_serialize_job(j) for j in jobs], "limit": limit}
+
+
+@router.get("/api/jobs/{job_id}")
+async def get_job(job_id: str):
+    job = job_manager.get(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    return _serialize_job(job)
+
+
+@router.delete("/api/jobs/{job_id}")
+async def cancel_job(job_id: str):
+    job = job_manager.get(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    # Request cooperative cancellation; do not mark terminal here to avoid clearing the flag prematurely.
+    requested = job_manager.request_cancel(job_id)
+    # Return current job status; SearchService/SearchJob will observe the flag and mark `cancelled` soon after.
+    job = job_manager.get(job_id) or job
+    return {"requested": requested, "status": job.status}
+
+
+@router.post("/api/jobs/search")
+async def start_search_job(keyword: str, max_workers: Optional[int] = None):
+    # Alias of /api/search for now (synchronous execution), returns same fields plus job_id.
+    try:
+        result, job_id = await search_service.run(keyword=keyword, max_workers=max_workers)
+        output_path = Path(result.output_path)
+        output_url = None
+        try:
+            if output_path.is_relative_to(settings.results_dir):
+                output_url = f"/results/{output_path.name}"
+            else:
+                candidate = Path(settings.results_dir) / output_path.name
+                if candidate.exists():
+                    output_url = f"/results/{candidate.name}"
+        except AttributeError:
+            try:
+                output_path.relative_to(settings.results_dir)
+                output_url = f"/results/{output_path.name}"
+            except Exception:
+                candidate = Path(settings.results_dir) / output_path.name
+                if candidate.exists():
+                    output_url = f"/results/{candidate.name}"
+        try:
+            repository.record_search_result(Path(result.output_path))
+        except Exception:
+            pass
+        return {
+            "job_id": job_id,
+            "scanned_files": result.scanned_files,
+            "lines_found": result.lines_found,
+            "output_path": result.output_path,
+            "output_url": output_url,
+        }
+    except RuntimeError as e:
+        raise HTTPException(status_code=400, detail=str(e))

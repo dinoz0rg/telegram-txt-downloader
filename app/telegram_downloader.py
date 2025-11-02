@@ -13,6 +13,7 @@ from pyrogram.types import Message
 from .config import settings
 from .logging_setup import setup_logging
 from .db import get_downloaded_file_ids, mark_file_downloaded, start_job, finish_job
+from .jobs import job_manager, JobStatus
 
 
 @dataclass
@@ -41,7 +42,8 @@ class TelegramDownloaderService:
         self.stats = DownloadStats()
         self._lock = asyncio.Lock()
         self._stop_event = asyncio.Event()
-        self.current_job_id: Optional[int] = None
+        self.current_job_id: Optional[int] = None  # DB job id
+        self.current_job_manager_id: Optional[str] = None  # In-memory JobManager job id
         # Explicit state machine for reliable UI status
         self.state: str = "stopped"  # stopped | starting | running | stopping
         self.last_state_change: float = time.time()
@@ -59,6 +61,23 @@ class TelegramDownloaderService:
             # If nothing to download, consider progress done
             self.stats.percent = 100
         self.stats.last_update = time.time()
+        # Push progress to JobManager if a job exists
+        if self.current_job_manager_id:
+            try:
+                job_manager.update_progress(self.current_job_manager_id, {
+                    "messages_scanned": self.stats.total_candidates,
+                    "files_downloaded": self.stats.downloaded,
+                    "failed": self.stats.failed,
+                    "skipped": self.stats.skipped,
+                    "total_to_download": self.stats.total_to_download,
+                    "processed": self.stats.processed,
+                    "percent": self.stats.percent,
+                    "current_file": self.stats.current_file,
+                    "current_index": self.stats.current_index,
+                    "last_update": self.stats.last_update,
+                })
+            except Exception:
+                pass
 
     def _load_downloaded_files(self):
         # Load previously downloaded file IDs from the database
@@ -129,7 +148,14 @@ class TelegramDownloaderService:
         if seconds <= 0:
             return
         try:
-            await asyncio.wait_for(self._stop_event.wait(), timeout=seconds)
+            # Also wake early if a JobManager cancellation was requested
+            async def _waiter():
+                while not self._stop_event.is_set():
+                    if self.current_job_manager_id and job_manager.is_cancelled(self.current_job_manager_id):
+                        self._stop_event.set()
+                        break
+                    await asyncio.sleep(0.2)
+            await asyncio.wait_for(_waiter(), timeout=seconds)
         except asyncio.TimeoutError:
             return
 
@@ -186,6 +212,12 @@ class TelegramDownloaderService:
             # Enter running state once the client session is active
             self.state = "running"
             self.last_state_change = time.time()
+            # Reflect running in JobManager as well
+            if self.current_job_manager_id:
+                try:
+                    job_manager.mark(self.current_job_manager_id, JobStatus.running)
+                except Exception:
+                    pass
             self.logger.info("Connected to Telegram")
             # Start a job record for this run
             try:
@@ -203,6 +235,12 @@ class TelegramDownloaderService:
                         self.current_job_id = None
                 except Exception:
                     pass
+                # Reflect failure in JobManager
+                if self.current_job_manager_id:
+                    try:
+                        job_manager.mark(self.current_job_manager_id, JobStatus.failed, error=str(e))
+                    except Exception:
+                        pass
                 return
 
             messages = await self._get_all_messages()
@@ -242,6 +280,10 @@ class TelegramDownloaderService:
             refresh_interval = 30 * 60
 
             while self.running and i < len(queue):
+                # Observe JobManager cancellation cooperatively
+                if self.current_job_manager_id and job_manager.is_cancelled(self.current_job_manager_id):
+                    self._stop_event.set()
+                    break
                 message, fid = queue[i]
                 filename = self._get_filename(message)
                 dest = Path(settings.download_dir) / filename
@@ -324,12 +366,16 @@ class TelegramDownloaderService:
             self.running = False
             self.state = "stopped"
             self.last_state_change = time.time()
-            # Finish job if started
+            # Determine terminal status for JobManager and DB
+            cancelled = False
+            if self.current_job_manager_id and job_manager.is_cancelled(self.current_job_manager_id):
+                cancelled = True
+            # Finish job if started (DB persistence)
             try:
                 if self.current_job_id is not None:
                     finish_job(
                         self.current_job_id,
-                        status="finished",
+                        status=("cancelled" if cancelled else "finished"),
                         details={
                             "downloaded": self.stats.downloaded,
                             "failed": self.stats.failed,
@@ -341,19 +387,32 @@ class TelegramDownloaderService:
                     self.current_job_id = None
             except Exception:
                 pass
+            # Mark JobManager terminal state
+            if self.current_job_manager_id:
+                try:
+                    if cancelled:
+                        job_manager.mark(self.current_job_manager_id, JobStatus.cancelled)
+                    else:
+                        job_manager.mark(self.current_job_manager_id, JobStatus.completed)
+                except Exception:
+                    pass
 
     async def start(self) -> dict:
         async with self._lock:
             if self.running:
-                return {"status": "already_running", "stats": asdict(self.stats)}
+                return {"status": "already_running", "stats": asdict(self.stats), "job_id": self.current_job_manager_id}
             self.running = True
             self._stop_event.clear()
-            # Immediately reflect Running for deterministic UI, worker will reaffirm
-            self.state = "running"
+            # Create JobManager job and mark starting
+            jm_job = job_manager.create("downloader", {"phase": "starting"})
+            self.current_job_manager_id = jm_job.id
+            job_manager.mark(jm_job.id, JobStatus.starting)
+            # Immediately reflect Starting for deterministic UI, worker will reaffirm
+            self.state = "starting"
             self.last_state_change = time.time()
             self.stats = DownloadStats(in_progress=True, last_update=time.time())
             self._task = asyncio.create_task(self._worker())
-            return {"status": "started"}
+            return {"status": "started", "job_id": self.current_job_manager_id}
 
     async def stop(self) -> dict:
         async with self._lock:

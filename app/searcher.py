@@ -33,7 +33,7 @@ class SearchResult:
 
 
 class SearchJob:
-    def __init__(self, keyword: str, root_dir: str | Path = settings.download_dir, output_path: str | Path | None = None, max_workers: int | None = None):
+    def __init__(self, keyword: str, root_dir: str | Path = settings.download_dir, output_path: str | Path | None = None, max_workers: int | None = None, *, on_progress=None, is_cancelled=None):
         self.keyword = keyword
         self.root = Path(root_dir)
         self.output_path = Path(output_path) if output_path else None
@@ -41,6 +41,9 @@ class SearchJob:
         self.lock = threading.Lock()
         self.stop_event = threading.Event()
         self.total_lines_found = 0
+        # Optional callbacks for progress and cooperative cancellation
+        self.on_progress = on_progress  # callable(dict) -> None
+        self.is_cancelled = is_cancelled  # callable() -> bool
 
     def _resolve_output_path(self) -> Path:
         if self.output_path:
@@ -57,7 +60,7 @@ class SearchJob:
         local_count = 0
         local_lines: list[str] = []
         for _, content in search_lines_in_file(file_path, self.keyword):
-            if self.stop_event.is_set():
+            if self.stop_event.is_set() or (self.is_cancelled and self.is_cancelled()):
                 break
             local_lines.append(content)
             local_count += 1
@@ -80,17 +83,50 @@ class SearchJob:
         files = list(iter_text_files(self.root))
         file_count = len(files)
 
+        # Initial progress notification
+        if self.on_progress:
+            try:
+                self.on_progress({
+                    "total_files": file_count,
+                    "files_scanned": 0,
+                    "matches_found": 0,
+                    "percent_complete": 0,
+                })
+            except Exception:
+                pass
+
         max_workers = self.max_workers
         if max_workers is None:
             max_workers = min(32, (os.cpu_count() or 4) * 4)
 
         executor = ThreadPoolExecutor(max_workers=max_workers)
         futures = {}
+        files_scanned = 0
         try:
             futures = {executor.submit(self._process_file, f, out_path): f for f in files}
             for future in as_completed(futures):
+                if self.stop_event.is_set() or (self.is_cancelled and self.is_cancelled()):
+                    # Cancel remaining futures and stop early
+                    self.stop_event.set()
+                    for f in list(futures.keys()):
+                        f.cancel()
+                    break
                 cnt = future.result()
                 self.total_lines_found += cnt
+                files_scanned += 1
+                if self.on_progress:
+                    try:
+                        percent = int(100 * files_scanned / file_count) if file_count else 100
+                        current_file = futures.get(future)
+                        self.on_progress({
+                            "total_files": file_count,
+                            "files_scanned": files_scanned,
+                            "matches_found": self.total_lines_found,
+                            "percent_complete": percent,
+                            "current_file": str(current_file) if current_file else None,
+                        })
+                    except Exception:
+                        pass
         except KeyboardInterrupt:
             self.stop_event.set()
             for f in list(futures.keys()):
@@ -99,12 +135,19 @@ class SearchJob:
             executor.shutdown(wait=False, cancel_futures=True)
 
         return SearchResult(
-            scanned_files=file_count,
+            scanned_files=files_scanned if files_scanned else file_count,
             lines_found=self.total_lines_found,
             output_path=str(out_path.resolve()),
         )
 
 
-def run_search(keyword: str, root_dir: str | Path = settings.download_dir, output_path: str | Path | None = None, max_workers: int | None = None) -> SearchResult:
-    job = SearchJob(keyword=keyword, root_dir=root_dir, output_path=output_path, max_workers=max_workers)
+def run_search(keyword: str, root_dir: str | Path = settings.download_dir, output_path: str | Path | None = None, max_workers: int | None = None, *, on_progress=None, is_cancelled=None) -> SearchResult:
+    job = SearchJob(
+        keyword=keyword,
+        root_dir=root_dir,
+        output_path=output_path,
+        max_workers=max_workers,
+        on_progress=on_progress,
+        is_cancelled=is_cancelled,
+    )
     return job.run()
