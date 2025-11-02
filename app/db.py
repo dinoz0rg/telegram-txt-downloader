@@ -281,3 +281,79 @@ def record_search_result(path: Path) -> str:
     mark_file_downloaded(file_id=file_id, path=p, size=size, origin='search')
     return file_id
 
+
+# Stats helpers
+
+def get_daily_downloads(days: int = 30) -> list[dict[str, Any]]:
+    """Return per-day counts and total MB for last N days (inclusive), GMT+8 day buckets.
+    Output: [{date:'YYYY-MM-DD', count:int, mb: float}...]
+    """
+    from datetime import datetime, timedelta
+    days = max(1, min(int(days or 30), 365))
+    # Calculate start date in GMT+8
+    now_gmt8 = datetime.utcnow() + timedelta(hours=8)
+    start_date = (now_gmt8 - timedelta(days=days - 1)).date().strftime('%Y-%m-%d')
+
+    conn = get_conn()
+    cur = conn.execute(
+        """
+        SELECT substr(downloaded_at,1,10) AS day,
+               COUNT(*) AS cnt,
+               COALESCE(SUM(COALESCE(size_mb,0.0)), 0.0) AS mb
+        FROM files
+        WHERE status='downloaded' AND downloaded_at IS NOT NULL AND substr(downloaded_at,1,10) >= ?
+        GROUP BY day
+        ORDER BY day ASC
+        """,
+        (start_date,)
+    )
+    rows = {r['day']: {'date': r['day'], 'count': int(r['cnt'] or 0), 'mb': float(r['mb'] or 0.0)} for r in cur.fetchall()}
+
+    # Fill missing days
+    out: list[dict[str, Any]] = []
+    d0 = datetime.strptime(start_date, '%Y-%m-%d').date()
+    for i in range(days):
+        d = (d0 + timedelta(days=i)).strftime('%Y-%m-%d')
+        out.append(rows.get(d, {'date': d, 'count': 0, 'mb': 0.0}))
+    return out
+
+
+def get_origin_breakdown() -> list[dict[str, Any]]:
+    """Return counts and MB grouped by origin."""
+    conn = get_conn()
+    cur = conn.execute(
+        """
+        SELECT origin,
+               COUNT(*) AS cnt,
+               COALESCE(SUM(COALESCE(size_mb,0.0)), 0.0) AS mb
+        FROM files
+        WHERE status='downloaded'
+        GROUP BY origin
+        ORDER BY origin
+        """
+    )
+    out = []
+    for r in cur.fetchall():
+        out.append({'origin': r['origin'] or 'unknown', 'count': int(r['cnt'] or 0), 'mb': float(r['mb'] or 0.0)})
+    return out
+
+
+def get_stats_summary() -> dict[str, Any]:
+    """Return overall totals and first/last download timestamps."""
+    conn = get_conn()
+    cur = conn.execute(
+        """
+        SELECT COUNT(*) AS cnt, COALESCE(SUM(COALESCE(size_mb,0.0)),0.0) AS mb,
+               MIN(downloaded_at) AS first_download,
+               MAX(downloaded_at) AS last_download
+        FROM files WHERE status='downloaded';
+        """
+    )
+    r = cur.fetchone() or {}
+    return {
+        'count': int(r.get('cnt') or 0),
+        'mb': float(r.get('mb') or 0.0),
+        'first_download': r.get('first_download'),
+        'last_download': r.get('last_download'),
+    }
+

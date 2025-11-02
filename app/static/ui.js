@@ -41,6 +41,100 @@
   };
 
   const UI = {
+    initStats() {
+      const dailyEl = $('#dailyChart');
+      const originEl = $('#originChart');
+      if (!dailyEl && !originEl) return; // Only on dashboard
+
+      let dailyChart = null;
+      let originChart = null;
+
+      const palette = {
+        line: 'rgba(13,110,253,0.7)',
+        lineBorder: 'rgba(13,110,253,1)',
+        area: 'rgba(13,110,253,0.15)',
+        green: '#20c997',
+        blue: '#0d6efd',
+        orange: '#fd7e14',
+        gray: '#6c757d',
+      };
+
+      const render = (data) => {
+        const days = (data.daily || []).map(d => d.date);
+        const counts = (data.daily || []).map(d => d.count || 0);
+        const mbs = (data.daily || []).map(d => Number(d.mb || 0).toFixed(2));
+
+        if (dailyEl) {
+          const ctx = dailyEl.getContext('2d');
+          if (dailyChart) dailyChart.destroy();
+          dailyChart = new Chart(ctx, {
+            type: 'line',
+            data: {
+              labels: days,
+              datasets: [
+                {
+                  label: 'Files',
+                  data: counts,
+                  borderColor: palette.lineBorder,
+                  backgroundColor: palette.area,
+                  fill: true,
+                  tension: 0.25,
+                  yAxisID: 'y',
+                },
+                {
+                  label: 'MB',
+                  data: mbs,
+                  borderColor: palette.green,
+                  backgroundColor: 'rgba(32,201,151,0.15)',
+                  fill: true,
+                  tension: 0.25,
+                  yAxisID: 'y1',
+                }
+              ]
+            },
+            options: {
+              responsive: true,
+              interaction: { mode: 'index', intersect: false },
+              scales: {
+                y: { beginAtZero: true, title: { text: 'Files', display: true } },
+                y1: { beginAtZero: true, position: 'right', grid: { drawOnChartArea: false }, title: { text: 'MB', display: true } },
+              },
+              plugins: { legend: { display: true } }
+            }
+          });
+        }
+
+        if (originEl) {
+          const ctx2 = originEl.getContext('2d');
+          if (originChart) originChart.destroy();
+          const labels = (data.origin || []).map(o => (o.origin || 'unknown'));
+          const values = (data.origin || []).map(o => Number(o.count || 0));
+          const colors = [palette.blue, palette.green, palette.orange, palette.gray];
+          originChart = new Chart(ctx2, {
+            type: 'doughnut',
+            data: {
+              labels,
+              datasets: [{ data: values, backgroundColor: colors.slice(0, Math.max(1, labels.length)) }]
+            },
+            options: { plugins: { legend: { position: 'bottom' } } }
+          });
+        }
+      };
+
+      const refresh = async () => {
+        try {
+          const stats = await api('/api/stats?days=30');
+          render(stats);
+        } catch (e) {
+          // no-op; charts will remain empty
+        }
+      };
+
+      refresh();
+      // Update every 30 seconds
+      setInterval(refresh, 30000);
+    },
+
     initDashboard() {
       // Show quick status and counts
       const statusEl = $('#dl-status');

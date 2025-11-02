@@ -10,6 +10,7 @@ from .telegram_downloader import TelegramDownloaderService
 from .searcher import run_search, SearchResult
 from .config import settings
 from .db import record_search_result
+from .db import get_daily_downloads, get_origin_breakdown, get_stats_summary
 
 router = APIRouter()
 
@@ -44,6 +45,29 @@ SEARCH_LAST_CHANGE = time.time()
 @router.get("/health")
 async def health():
     return {"status": "ok"}
+
+
+@router.get("/api/stats")
+async def stats(days: int = 30):
+    try:
+        daily = get_daily_downloads(days)
+        origin = get_origin_breakdown()
+        summary = get_stats_summary()
+        return {
+            "daily": daily,
+            "origin": origin,
+            "summary": summary,
+            "days": days,
+        }
+    except Exception as e:
+        # Avoid failing the UI if stats query fails
+        return {
+            "daily": [],
+            "origin": [],
+            "summary": {"count": 0, "mb": 0.0, "first_download": None, "last_download": None},
+            "days": days,
+            "error": str(e),
+        }
 
 
 @router.post("/api/downloader/start")
