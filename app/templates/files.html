@@ -2,7 +2,7 @@
 {% block content %}
 <div class="card shadow-sm">
   <div class="card-header d-flex align-items-center justify-content-between">
-    <h5 class="mb-0"><i class="bi bi-folder2-open me-2"></i>Files <span class="text-body-secondary small">(<span id="files-count">0</span>)</span></h5>
+    <h5 class="mb-0"><i class="bi bi-folder2-open me-2"></i>Downloaded results <span class="text-body-secondary small">(<span id="files-count">0</span>)</span></h5>
     <button id="files-refresh" class="btn btn-sm btn-outline-secondary"><i class="bi bi-arrow-clockwise"></i> Refresh</button>
   </div>
   <div class="card-body">
@@ -26,6 +26,40 @@
       <div class="btn-group">
         <button id="files-prev" class="btn btn-sm btn-outline-secondary">Prev</button>
         <button id="files-next" class="btn btn-sm btn-outline-secondary">Next</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="card shadow-sm mt-4">
+  <div class="card-header d-flex align-items-center justify-content-between">
+    <h5 class="mb-0"><i class="bi bi-file-earmark-text me-2"></i>Search results (.txt) <span class="text-body-secondary small">(<span id="search-files-count">0</span>)</span></h5>
+    <div class="d-flex align-items-center gap-2">
+      <input id="search-files-filter" type="text" class="form-control form-control-sm" placeholder="Filter files..." style="width:220px" />
+      <button id="search-files-refresh" type="button" class="btn btn-sm btn-outline-secondary"><i class="bi bi-arrow-clockwise"></i> Refresh</button>
+    </div>
+  </div>
+  <div class="card-body">
+    <div class="table-responsive">
+      <table class="table table-striped align-middle">
+        <thead>
+          <tr>
+            <th>Name</th>
+            <th class="text-end">Size</th>
+            <th class="text-end">Modified</th>
+            <th class="text-end">Actions</th>
+          </tr>
+        </thead>
+        <tbody id="search-files-body">
+          <tr><td colspan="4" class="text-body-secondary">Loading...</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="d-flex align-items-center justify-content-between mt-2">
+      <small id="search-files-page-label" class="text-body-secondary">Page 1 of 1</small>
+      <div class="btn-group">
+        <button id="search-files-prev" type="button" class="btn btn-sm btn-outline-secondary">Prev</button>
+        <button id="search-files-next" type="button" class="btn btn-sm btn-outline-secondary">Next</button>
       </div>
     </div>
   </div>

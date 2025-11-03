@@ -241,6 +241,7 @@
     },
 
     initFiles() {
+      // Downloaded files section
       const tbody = $('#files-body');
       const countEl = $('#files-count');
       const refreshBtn = $('#files-refresh');
@@ -256,17 +257,17 @@
       const render = (files) => {
         if (!tbody) return;
         if (!files || files.length === 0) {
-          tbody.innerHTML = `<tr><td colspan="4" class="text-body-secondary">No files</td></tr>`;
+          tbody.innerHTML = `<tr><td colspan=\"4\" class=\"text-body-secondary\">No files</td></tr>`;
           return;
         }
         tbody.innerHTML = files.map(f => `
           <tr>
-            <td class="text-truncate" title="${f.name}">${f.name}</td>
-            <td class="text-end">${formatBytes(f.size)}</td>
-            <td class="text-end">${new Date(f.modified * 1000).toLocaleString()}</td>
-            <td class="text-end">
-              <a class="btn btn-sm btn-outline-secondary" href="${f.path}" target="_blank"><i class="bi bi-eye"></i></a>
-              <a class="btn btn-sm btn-primary" href="${f.download_url}"><i class="bi bi-download"></i></a>
+            <td class=\"text-truncate\" title=\"${f.name}\">${f.name}</td>
+            <td class=\"text-end\">${formatBytes(f.size)}</td>
+            <td class=\"text-end\">${new Date(f.modified * 1000).toLocaleString()}</td>
+            <td class=\"text-end\">
+              <a class=\"btn btn-sm btn-outline-secondary\" href=\"${f.path}\" target=\"_blank\" title=\"Open\"><i class=\"bi bi-eye\"></i></a>
+              <a class=\"btn btn-sm btn-primary\" href=\"${f.download_url}\" title=\"Download\"><i class=\"bi bi-download\"></i></a>
             </td>
           </tr>`).join('');
       };
@@ -286,7 +287,7 @@
           setPager(data.page, data.total_pages);
           render(data.files || []);
         } catch (e) {
-          if (tbody) tbody.innerHTML = `<tr><td colspan="4" class="text-danger">${e.message}</td></tr>`;
+          if (tbody) tbody.innerHTML = `<tr><td colspan=\"4\" class=\"text-danger\">${e.message}</td></tr>`;
         }
       };
 
@@ -295,6 +296,86 @@
       on(nextBtn, 'click', () => { if (page < totalPages) { page += 1; refresh(); } });
 
       refresh();
+
+      // Search results section (moved here as requested)
+      const resTbody = $('#search-files-body');
+      const resCountEl = $('#search-files-count');
+      const resRefreshBtn = $('#search-files-refresh');
+      const resFilterInput = $('#search-files-filter');
+      const resPrevBtn = $('#search-files-prev');
+      const resNextBtn = $('#search-files-next');
+      const resPageLabel = $('#search-files-page-label');
+      if (resTbody) {
+        let rPage = 1;
+        const rPerPage = 10;
+        let rTotalPages = 1;
+        let rCurrentPageData = [];
+
+        const rRender = (files) => {
+          if (!files || files.length === 0) {
+            resTbody.innerHTML = `<tr><td colspan=\"4\" class=\"text-body-secondary\">No files</td></tr>`;
+            return;
+          }
+          let rows = files;
+          const q = (resFilterInput && resFilterInput.value || '').toLowerCase();
+          if (q) rows = rows.filter(f => f.name.toLowerCase().includes(q));
+          resTbody.innerHTML = rows.map(f => `
+            <tr>
+              <td class=\"text-truncate\" title=\"${f.name}\">${f.name}</td>
+              <td class=\"text-end\">${formatBytes(f.size)}</td>
+              <td class=\"text-end\">${new Date(f.modified * 1000).toLocaleString()}</td>
+              <td class=\"text-end\">
+                <a class=\"btn btn-sm btn-outline-secondary\" href=\"${f.path}\" target=\"_blank\" title=\"Open\"><i class=\"bi bi-eye\"></i></a>
+                <a class=\"btn btn-sm btn-primary\" href=\"${f.download_url}\" title=\"Download\"><i class=\"bi bi-download\"></i></a>
+                <button class=\"btn btn-sm btn-outline-danger\" data-action=\"delete\" data-name=\"${f.name}\" title=\"Delete\"><i class=\"bi bi-trash\"></i></button>
+              </td>
+            </tr>`).join('');
+        };
+
+        const rSetPager = (p, tp) => {
+          rTotalPages = Math.max(1, tp || 1);
+          rPage = Math.min(Math.max(1, p || 1), rTotalPages);
+          if (resPageLabel) resPageLabel.textContent = `Page ${rPage} of ${rTotalPages}`;
+          if (resPrevBtn) resPrevBtn.disabled = rPage <= 1;
+          if (resNextBtn) resNextBtn.disabled = rPage >= rTotalPages;
+        };
+
+        const rRefresh = async () => {
+          try {
+            const data = await api(`/api/results/files?page=${rPage}&per_page=${rPerPage}`);
+            if (resCountEl) resCountEl.textContent = data.count;
+            rSetPager(data.page, data.total_pages);
+            rCurrentPageData = data.files || [];
+            rRender(rCurrentPageData);
+          } catch (e) {
+            resTbody.innerHTML = `<tr><td colspan=\"4\" class=\"text-danger\">${e.message}</td></tr>`;
+          }
+        };
+
+        on(resRefreshBtn, 'click', (e) => { e.preventDefault(); rRefresh(); });
+        on(resPrevBtn, 'click', (e) => { e.preventDefault(); if (rPage > 1) { rPage -= 1; rRefresh(); } });
+        on(resNextBtn, 'click', (e) => { e.preventDefault(); if (rPage < rTotalPages) { rPage += 1; rRefresh(); } });
+        on(resFilterInput, 'input', () => rRender(rCurrentPageData));
+
+        on(resTbody, 'click', async (ev) => {
+          const btn = ev.target.closest('button[data-action="delete"]');
+          if (!btn) return;
+          ev.preventDefault();
+          const name = btn.getAttribute('data-name');
+          if (!name) return;
+          const ok = confirm(`Delete \"${name}\"?`);
+          if (!ok) return;
+          try {
+            await api(`/api/results/${encodeURIComponent(name)}`, { method: 'DELETE' });
+            if (rCurrentPageData.length <= 1 && rPage > 1) rPage -= 1;
+            await rRefresh();
+          } catch (e) {
+            alert('Delete failed: ' + e.message);
+          }
+        });
+
+        rRefresh();
+      }
     },
 
     initSearch() {

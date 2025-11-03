@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Request
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from pathlib import Path
 
@@ -41,12 +41,10 @@ async def ui_files(request: Request):
     )
 
 
-@router.get("/ui/search", response_class=HTMLResponse)
+@router.get("/ui/search")
 async def ui_search(request: Request):
-    return templates.TemplateResponse(
-        "search.html",
-        {"request": request, "page": "search"},
-    )
+    # Search tab removed — redirect to Downloaded results page
+    return RedirectResponse(url="/ui/files", status_code=307)
 
 
 @router.get("/ui/logs", response_class=HTMLResponse)
