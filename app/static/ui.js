@@ -251,8 +251,13 @@
       if (!tbody) return; // only run on Files page
 
       let page = 1;
-      const perPage = 10;
+      let perPageInput = document.getElementById('files-per-page');
+      let filterInput = document.getElementById('files-filter');
+      let perPage = parseInt((perPageInput && perPageInput.value) || '5', 10);
+      if (!isFinite(perPage) || perPage <= 0) perPage = 5;
       let totalPages = 1;
+      let currentPageData = [];
+      let filterTimer = null;
 
       const render = (files) => {
         if (!tbody) return;
@@ -260,7 +265,11 @@
           tbody.innerHTML = `<tr><td colspan=\"4\" class=\"text-body-secondary\">No files</td></tr>`;
           return;
         }
-        tbody.innerHTML = files.map(f => `
+        const rows = files;
+        tbody.innerHTML = rows.map(f => {
+          const delPath = (f.download_url || '').replace('/api/files/download/', '');
+          const delPathEncoded = encodeURI(delPath);
+          return `
           <tr>
             <td class=\"text-truncate\" title=\"${f.name}\">${f.name}</td>
             <td class=\"text-end\">${formatBytes(f.size)}</td>
@@ -268,8 +277,10 @@
             <td class=\"text-end\">
               <a class=\"btn btn-sm btn-outline-secondary\" href=\"${f.path}\" target=\"_blank\" title=\"Open\"><i class=\"bi bi-eye\"></i></a>
               <a class=\"btn btn-sm btn-primary\" href=\"${f.download_url}\" title=\"Download\"><i class=\"bi bi-download\"></i></a>
+              <button class=\"btn btn-sm btn-outline-danger\" data-action=\"delete\" data-path=\"${delPathEncoded}\" title=\"Delete\"><i class=\"bi bi-trash\"></i></button>
             </td>
-          </tr>`).join('');
+          </tr>`;
+        }).join('');
       };
 
       const setPager = (p, tp) => {
@@ -282,10 +293,16 @@
 
       const refresh = async () => {
         try {
-          const data = await api(`/api/files?page=${page}&per_page=${perPage}`);
+          // re-read perPage to respect live edits
+          perPage = parseInt((perPageInput && perPageInput.value) || `${perPage}`, 10);
+          if (!isFinite(perPage) || perPage <= 0) perPage = 5;
+          const q = encodeURIComponent(((filterInput && filterInput.value) || '').trim());
+          const url = `/api/files?page=${page}&per_page=${perPage}` + (q ? `&q=${q}` : '');
+          const data = await api(url);
           if (countEl) countEl.textContent = data.count;
           setPager(data.page, data.total_pages);
-          render(data.files || []);
+          currentPageData = data.files || [];
+          render(currentPageData);
         } catch (e) {
           if (tbody) tbody.innerHTML = `<tr><td colspan=\"4\" class=\"text-danger\">${e.message}</td></tr>`;
         }
@@ -294,6 +311,30 @@
       on(refreshBtn, 'click', refresh);
       on(prevBtn, 'click', () => { if (page > 1) { page -= 1; refresh(); } });
       on(nextBtn, 'click', () => { if (page < totalPages) { page += 1; refresh(); } });
+      if (perPageInput) on(perPageInput, 'change', () => { page = 1; refresh(); });
+      if (filterInput) on(filterInput, 'input', () => {
+        page = 1;
+        if (filterTimer) clearTimeout(filterTimer);
+        filterTimer = setTimeout(() => { refresh(); }, 250);
+      });
+
+      // Delete handler (delegated)
+      on(tbody, 'click', async (ev) => {
+        const btn = ev.target.closest('button[data-action="delete"]');
+        if (!btn) return;
+        ev.preventDefault();
+        const rel = btn.getAttribute('data-path');
+        if (!rel) return;
+        const ok = confirm('Delete this file?');
+        if (!ok) return;
+        try {
+          await api(`/api/files/${rel}`, { method: 'DELETE' });
+          if (currentPageData.length <= 1 && page > 1) page -= 1;
+          await refresh();
+        } catch (e) {
+          alert('Delete failed: ' + e.message);
+        }
+      });
 
       refresh();
 
@@ -307,18 +348,19 @@
       const resPageLabel = $('#search-files-page-label');
       if (resTbody) {
         let rPage = 1;
-        const rPerPage = 10;
+        let rPerPageInput = document.getElementById('search-files-per-page');
+        let rPerPage = parseInt((rPerPageInput && rPerPageInput.value) || '5', 10);
+        if (!isFinite(rPerPage) || rPerPage <= 0) rPerPage = 5;
         let rTotalPages = 1;
         let rCurrentPageData = [];
+        let rFilterTimer = null;
 
         const rRender = (files) => {
           if (!files || files.length === 0) {
             resTbody.innerHTML = `<tr><td colspan=\"4\" class=\"text-body-secondary\">No files</td></tr>`;
             return;
           }
-          let rows = files;
-          const q = (resFilterInput && resFilterInput.value || '').toLowerCase();
-          if (q) rows = rows.filter(f => f.name.toLowerCase().includes(q));
+          const rows = files;
           resTbody.innerHTML = rows.map(f => `
             <tr>
               <td class=\"text-truncate\" title=\"${f.name}\">${f.name}</td>
@@ -342,7 +384,12 @@
 
         const rRefresh = async () => {
           try {
-            const data = await api(`/api/results/files?page=${rPage}&per_page=${rPerPage}`);
+            // Re-read per-page to respect live edits
+            rPerPage = parseInt((rPerPageInput && rPerPageInput.value) || `${rPerPage}`, 10);
+            if (!isFinite(rPerPage) || rPerPage <= 0) rPerPage = 5;
+            const q = encodeURIComponent(((resFilterInput && resFilterInput.value) || '').trim());
+            const url = `/api/results/files?page=${rPage}&per_page=${rPerPage}` + (q ? `&q=${q}` : '');
+            const data = await api(url);
             if (resCountEl) resCountEl.textContent = data.count;
             rSetPager(data.page, data.total_pages);
             rCurrentPageData = data.files || [];
@@ -355,7 +402,12 @@
         on(resRefreshBtn, 'click', (e) => { e.preventDefault(); rRefresh(); });
         on(resPrevBtn, 'click', (e) => { e.preventDefault(); if (rPage > 1) { rPage -= 1; rRefresh(); } });
         on(resNextBtn, 'click', (e) => { e.preventDefault(); if (rPage < rTotalPages) { rPage += 1; rRefresh(); } });
-        on(resFilterInput, 'input', () => rRender(rCurrentPageData));
+        if (rPerPageInput) on(rPerPageInput, 'change', () => { rPage = 1; rRefresh(); });
+        on(resFilterInput, 'input', () => {
+          rPage = 1;
+          if (rFilterTimer) clearTimeout(rFilterTimer);
+          rFilterTimer = setTimeout(() => { rRefresh(); }, 250);
+        });
 
         on(resTbody, 'click', async (ev) => {
           const btn = ev.target.closest('button[data-action="delete"]');

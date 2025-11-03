@@ -144,7 +144,7 @@ async def downloader_status():
 
 
 @router.get("/api/files")
-async def list_files(page: int = 1, per_page: int = 10):
+async def list_files(page: int = 1, per_page: int = 5, q: Optional[str] = None):
     root = Path(settings.download_dir).resolve()
     root.mkdir(parents=True, exist_ok=True)
     items = []
@@ -161,6 +161,11 @@ async def list_files(page: int = 1, per_page: int = 10):
                 "path": f"/downloaded/{rel_url}",  # inline view via StaticFiles (supports nested)
                 "download_url": f"/api/files/download/{rel_url}",  # force download (API)
             })
+    # Optional server-side filter by filename (case-insensitive) BEFORE sorting/pagination
+    if q:
+        q_low = q.strip().lower()
+        if q_low:
+            items = [it for it in items if q_low in (it.get("name") or "").lower()]
     # Sort by modified desc for consistency
     items.sort(key=lambda x: x["modified"], reverse=True)
     total = len(items)
@@ -177,7 +182,7 @@ async def list_files(page: int = 1, per_page: int = 10):
 
 
 @router.get("/api/results/files")
-async def list_result_files(page: int = 1, per_page: int = 10):
+async def list_result_files(page: int = 1, per_page: int = 5, q: Optional[str] = None):
     root = Path(settings.results_dir)
     root.mkdir(parents=True, exist_ok=True)
     items = []
@@ -190,6 +195,11 @@ async def list_result_files(page: int = 1, per_page: int = 10):
             "path": f"/results/{p.name}",  # inline view via StaticFiles
             "download_url": f"/api/results/download/{p.name}",  # force download (API)
         })
+    # Optional server-side filter by filename (case-insensitive) BEFORE sorting/pagination
+    if q:
+        q_low = q.strip().lower()
+        if q_low:
+            items = [it for it in items if q_low in (it.get("name") or "").lower()]
     items.sort(key=lambda x: x["modified"], reverse=True)
     total = len(items)
     per_page = 1 if per_page <= 0 else per_page
@@ -231,6 +241,24 @@ async def download_file(path: str):
     if not requested.exists() or not requested.is_file():
         raise HTTPException(status_code=404, detail="File not found")
     return FileResponse(str(requested), media_type="text/plain; charset=utf-8", filename=requested.name)
+
+
+@router.delete("/api/files/{path:path}")
+async def delete_file(path: str):
+    # Delete a file under download_dir, supporting nested relative paths
+    root = Path(settings.download_dir).resolve()
+    target = (root / path).resolve()
+    try:
+        target.relative_to(root)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid path")
+    if not target.exists() or not target.is_file():
+        raise HTTPException(status_code=404, detail="File not found")
+    try:
+        target.unlink()
+    except OSError as e:
+        raise HTTPException(status_code=500, detail=f"Could not delete: {e}")
+    return {"deleted": True, "path": path}
 
 
 @router.get("/api/results/download/{name}")
