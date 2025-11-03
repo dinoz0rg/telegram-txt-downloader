@@ -1,7 +1,8 @@
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import FileResponse, PlainTextResponse
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Any, Dict
+
 import time
 import os
 
@@ -329,7 +330,6 @@ async def search(keyword: str, max_workers: Optional[int] = None):
 
 
 # --- Jobs API (additive, non-breaking) ---
-from typing import Any, Dict
 
 
 def _serialize_job(job) -> Dict[str, Any]:

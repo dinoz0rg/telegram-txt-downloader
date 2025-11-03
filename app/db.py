@@ -1,9 +1,8 @@
 from __future__ import annotations
 import sqlite3
 from pathlib import Path
-from typing import Iterable, Set, Optional, Any
+from typing import Set, Optional, Any
 import json
-import time
 
 _DB_CONN: sqlite3.Connection | None = None
 _DB_PATH: Path | None = None
@@ -65,13 +64,6 @@ def _apply_migrations(conn: sqlite3.Connection) -> None:
         );
         """
     )
-    # Determine current schema version (default 1 for legacy schema)
-    cur = conn.execute("SELECT value FROM _meta WHERE key='schema_version'")
-    row = cur.fetchone()
-    try:
-        schema_version = int((row or {}).get("value", 1))
-    except Exception:
-        schema_version = 1
 
     def _create_new_files():
         conn.execute(
