@@ -277,7 +277,7 @@
             <td class=\"text-end\">
               <a class=\"btn btn-sm btn-outline-secondary\" href=\"${f.path}\" target=\"_blank\" title=\"Open\"><i class=\"bi bi-eye\"></i></a>
               <a class=\"btn btn-sm btn-primary\" href=\"${f.download_url}\" title=\"Download\"><i class=\"bi bi-download\"></i></a>
-              <button class=\"btn btn-sm btn-outline-danger\" data-action=\"delete\" data-path=\"${delPathEncoded}\" title=\"Delete\"><i class=\"bi bi-trash\"></i></button>
+              <button class=\"btn btn-sm btn-danger\" data-action=\"delete\" data-path=\"${delPathEncoded}\" title=\"Delete\"><i class=\"bi bi-trash\"></i></button>
             </td>
           </tr>`;
         }).join('');
@@ -369,7 +369,7 @@
               <td class=\"text-end\">
                 <a class=\"btn btn-sm btn-outline-secondary\" href=\"${f.path}\" target=\"_blank\" title=\"Open\"><i class=\"bi bi-eye\"></i></a>
                 <a class=\"btn btn-sm btn-primary\" href=\"${f.download_url}\" title=\"Download\"><i class=\"bi bi-download\"></i></a>
-                <button class=\"btn btn-sm btn-outline-danger\" data-action=\"delete\" data-name=\"${f.name}\" title=\"Delete\"><i class=\"bi bi-trash\"></i></button>
+                <button class=\"btn btn-sm btn-danger\" data-action=\"delete\" data-name=\"${f.name}\" title=\"Delete\"><i class=\"bi bi-trash\"></i></button>
               </td>
             </tr>`).join('');
         };
@@ -487,7 +487,7 @@
               <td class="text-end">
                 <a class="btn btn-sm btn-outline-secondary" href="${f.path}" target="_blank" title="Open"><i class="bi bi-eye"></i></a>
                 <a class="btn btn-sm btn-primary" href="${f.download_url}" title="Download"><i class="bi bi-download"></i></a>
-                <button class="btn btn-sm btn-outline-danger" data-action="delete" data-name="${f.name}" title="Delete"><i class="bi bi-trash"></i></button>
+                <button class="btn btn-sm btn-danger" data-action="delete" data-name="${f.name}" title="Delete"><i class="bi bi-trash"></i></button>
               </td>
             </tr>`).join('');
         };
