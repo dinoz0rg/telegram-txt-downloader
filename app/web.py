@@ -63,6 +63,7 @@ async def ui_settings(request: Request):
         "logs_dir": str(Path(settings.logs_dir).resolve()),
         "log_file": str(Path(settings.log_file).resolve()),
         "max_file_size": settings.max_file_size,
+        "max_file_size_mb_str": settings.max_file_size_mb_display,
         "max_file_age_days": settings.max_file_age_days,
         "group_id": settings.group_id,
         "session_name": settings.session_name,

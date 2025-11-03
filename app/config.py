@@ -15,7 +15,10 @@ class Settings(BaseSettings):
 
     # Downloading
     download_dir: Path = Field(Path("output\\downloaded_dir"), alias="DOWNLOAD_DIR")
-    max_file_size: int = Field(500 * 1024 * 1024, alias="MAX_FILE_SIZE")  # 500 MB default
+    # Configure limit in megabytes (MB) only
+    max_file_size_mb: int = Field(500, alias="MAX_FILE_SIZE_MB")  # preferred, whole MB
+    # Canonical bytes value used by the app (computed in post-init)
+    max_file_size: int = 500 * 1024 * 1024
     max_file_age_days: int = Field(0, alias="MAX_FILE_AGE_DAYS")
 
     # Behavior
@@ -47,6 +50,16 @@ class Settings(BaseSettings):
         self.log_file = _to_abs(self.log_file)
         self.results_dir = _to_abs(self.results_dir)
         self.db_file = _to_abs(self.db_file)
+
+        # Resolve canonical max_file_size in bytes from MB-only setting
+        if self.max_file_size_mb is None or self.max_file_size_mb <= 0:
+            raise ValueError("MAX_FILE_SIZE_MB must be set to a positive integer (MB)")
+        self.max_file_size = int(self.max_file_size_mb) * 1024 * 1024
+
+    @property
+    def max_file_size_mb_display(self) -> str:
+        mbytes = self.max_file_size / (1024 * 1024)
+        return str(int(mbytes)) if float(mbytes).is_integer() else f"{mbytes:.1f}"
 
 
 settings = Settings()
